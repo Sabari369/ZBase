@@ -1,2 +1,6 @@
+<<<<<<< HEAD
 mainthalapathyvijayasdfghjklpoiuytrewq
 asdfghe
+=======
+JavaProjectZbase
+>>>>>>> branch 'main' of https://github.com/Sabari369/ZBase.git
