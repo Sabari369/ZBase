@@ -1,1 +1,502 @@
-dfghj
+package Model;
+
+public class Column {
+	
+	String name;        
+	String dataType;
+	boolean isNullable;
+	Constraint constraint;
+	
+	public Column(String name, String dataType, boolean isNullable, Constraint constraint) {
+		super();
+		this.name = name;
+		this.dataType = dataType;
+		this.isNullable = isNullable;
+		this.constraint = constraint;
+	}
+
+	public String getName() {
+		return name;
+	}
+
+	public void setName(String name) {
+		this.name = name;
+	}
+
+	public String getDataType() {
+		return dataType;
+	}
+
+	public void setDataType(String dataType) {
+		this.dataType = dataType;
+	}
+
+	public boolean isNullable() {
+		return isNullable;
+	}
+
+	public void setNullable(boolean isNullable) {
+		this.isNullable = isNullable;
+	}
+
+	public Constraint getConstraint() {
+		return constraint;
+	}
+
+	public void setConstraint(Constraint constraint) {
+		this.constraint = constraint;
+	}
+}
+
+
+
+package Model;
+
+import java.io.Serializable;
+
+
+public class Constraint implements Serializable {
+    private String name;
+    private String type; // e.g., PRIMARY KEY, FOREIGN KEY, UNIQUE, etc.
+    private String columnName;
+    private String referenceTable;  // For FOREIGN KEY constraints
+    private String referenceColumn; // For FOREIGN KEY constraints
+
+    // Constructor
+    public Constraint(String name, String type, String columnName, String referenceTable, String referenceColumn) {
+        this.name = name;
+        this.type = type;
+        this.columnName = columnName;
+        this.referenceTable = referenceTable;
+        this.referenceColumn = referenceColumn;
+    }
+
+    // Getters and Setters
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getType() {
+        return type;
+    }
+
+    public void setType(String type) {
+        this.type = type;
+    }
+
+    public String getColumnName() {
+        return columnName;
+    }
+
+    public void setColumnName(String columnName) {
+        this.columnName = columnName;
+    }
+
+    public String getReferenceTable() {
+        return referenceTable;
+    }
+
+    public void setReferenceTable(String referenceTable) {
+        this.referenceTable = referenceTable;
+    }
+
+    public String getReferenceColumn() {
+        return referenceColumn;
+    }
+
+    public void setReferenceColumn(String referenceColumn) {
+        this.referenceColumn = referenceColumn;
+    }
+
+}
+
+
+package Model;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+
+
+public class Database {
+	String name;
+	public HashMap<String, Table> tables;
+	
+	public Database(String name) {
+		this.name=name;
+		this.tables=new HashMap<String, Table>();
+	}
+	
+	public String getDabaseName() {
+		return name;
+	}
+
+	public ArrayList<String> getTables(){
+		ArrayList<String> tableName=new ArrayList<>();
+		for (String key : tables.keySet()) {
+            tableName.add(key);
+        }
+		return tableName;
+	}
+}
+
+
+package Model;
+
+import java.util.*;
+
+public class Row {
+    private Map<String, Object> data;
+
+    public Row() {
+        this.data = new HashMap<>();
+    }
+
+    public void setColumnValue(String columnName, Object value) {
+        data.put(columnName, value);
+    }
+
+    public Object getColumnValue(String columnName) {
+        return data.get(columnName);
+    }
+
+    public Map<String, Object> getData() {
+        return data;
+    }
+}
+
+
+
+package Model;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class Table {
+    private String name;
+    private List<Column> columns;
+    private List<Row> rows;
+
+    public Table(String name, List<Column> columns) {
+        this.name = name;
+        this.columns = columns;
+        this.rows =new ArrayList<>();
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public List<Column> getColumns() {
+        return columns;
+    }
+
+    public void setColumns(List<Column> columns) {
+        this.columns = columns;
+    }
+
+    public List<Row> getRows() {
+        return rows;
+    }
+
+    public void setRows(List<Row> rows) {
+        this.rows = rows;
+    }
+    
+    @Override
+    public String toString() {
+        return "Table{name='" + name + "', columns=" + columns + ", rows=" + rows +"}";
+    }
+}
+
+
+
+package Model;
+
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
+
+public class User {
+	String userId;
+	String username;
+	String password;
+	String email;
+	Date dateOfBirth;
+	String sessionId;
+	public HashMap<String, Database> databases;
+	String HomeDirectory;
+
+	// Constructor
+	public User(String username, String password, String email, Date dateOfBirth) {
+		this.username = username;
+		this.password = password;
+		this.email = email;
+		this.dateOfBirth = dateOfBirth;
+		this.sessionId = "";
+		this.HomeDirectory="/home/sabari-zstk369/Damaal/"+userId;
+		databases=new HashMap<String, Database>();
+	}
+
+	public String getUserId() {
+		return userId;
+	}
+
+	public void setUserId(String userId) {
+		this.userId = userId;
+	}
+
+	public ArrayList<String> getDatabases() {
+		ArrayList<String> databaseName=new ArrayList<>();
+		for (String key : databases.keySet()) {
+			databaseName.add(key);
+        }
+		return databaseName;
+	}
+	
+	public String getUsername() {
+		return username;
+	}
+
+	public void setUsername(String username) {
+		this.username = username;
+	}
+
+	public String getPassword() {
+		return password;
+	}
+
+	public void setPassword(String password) {
+		this.password = password;
+	}
+
+	public String getEmail() {
+		return email;
+	}
+
+	public void setEmail(String email) {
+		this.email = email;
+	}
+
+	public String getSessionId() {
+		return sessionId;
+	}
+
+	public void setSessionId(String sessionId) {
+		this.sessionId = sessionId;
+	}
+	
+
+	public String getHomeDirectory() {
+		return HomeDirectory;
+	}
+
+	public void setHomeDirectory(String homeDirectory) {
+		HomeDirectory = homeDirectory;
+	}
+
+	// Authentication Methods
+	public boolean login(String username, String password) {
+		return this.username.equals(username) && this.password.equals(password);
+	}
+
+	public void logout() {
+		this.sessionId = "";
+		System.out.println(username + " logged out.");
+	}
+}
+
+
+
+
+
+
+controller---------
+
+package Controller;
+
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.ObjectOutputStream;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.util.List;
+
+import Model.*;
+
+public class DatabaseOperation {
+
+	User user;
+
+	DatabaseOperation(User user) {
+		this.user = user;
+	}
+
+	boolean createDatabase(Database db) {
+
+		String path = "/home/sabari-zstk369/Damaal/" + user.getUserId() + "/" + db.getDabaseName();
+
+		File folder = new File(path);
+
+		if (folder.exists()) {
+			System.out.println("Hello");
+			return false;
+		} else {
+			if (folder.mkdirs()) {
+				System.out.println("HII");
+				user.databases.put(db.getDabaseName(), db);
+				return true;
+			}
+		}
+		return false;
+	}
+
+	static boolean deleteFolder(String folderPath) throws IOException {
+		Path folder = Paths.get(folderPath);
+		if (Files.exists(folder)) {
+			Files.walk(folder).sorted((a, b) -> b.compareTo(a)).forEach(path -> {
+				try {
+					Files.delete(path);
+				} catch (IOException e) {
+//                         throw new RuntimeException("Failed to delete: " + path, e);
+					////////////
+				}
+			});
+			return true;
+		}
+		return false;
+
+	}
+
+	boolean dropDatabase(String dbName) {
+		for (String db : user.getDatabases()) {
+			if (db.equals(dbName)) {
+				try {
+					deleteFolder("/home/sabari-zstk369/Damaal/" + dbName);
+				} catch (Exception e) {
+					return false;
+				}
+				user.getDatabases().remove(db);
+			}
+		}
+		return false;
+	}
+
+	private static void writeMetaData(ByteBuffer buffer, String value) {
+		byte[] stringBytes = value.getBytes(StandardCharsets.UTF_8);
+		buffer.putInt(stringBytes.length);
+		buffer.put(stringBytes);
+	}
+
+	public boolean createTable(String databaseName, String tableName, List<Column> columns) {
+		Database database = user.databases.get(databaseName);
+		System.out.println(database);
+		if (database == null) {
+//			System.out.println("Database does not exist: " + databaseName);
+			return false;
+		}
+
+		if (database.getTables().contains(tableName)) {
+//			System.out.println("Table already exists: " + tableName);
+			return false;
+		}
+
+		Table newTable = new Table(tableName, columns);
+
+		database.tables.put(tableName, newTable);
+
+		String tableFolderPath = user.getHomeDirectory() + "/" + database.getDabaseName() + "/" + tableName;
+
+		File tableFolder = new File(tableFolderPath);
+
+		if (!tableFolder.exists() && tableFolder.mkdir()) {
+			try (FileChannel channel = FileChannel.open(Paths.get(tableFolderPath + "/Metadata"),
+					StandardOpenOption.CREATE, StandardOpenOption.APPEND)) {
+
+				ByteBuffer buffer = ByteBuffer.allocate(1024);
+
+				for (Column c : columns) {
+					Path filePath = Paths.get(tableFolderPath+"/"+c.getName()); 
+			        try {
+			            Files.createFile(filePath);
+			            System.out.println("File created: " + filePath);
+			        } catch (FileAlreadyExistsException e) {
+			            System.out.println("File already exists.");
+			        } catch (Exception e) {
+			            e.printStackTrace();
+			        }
+					
+					writeMetaData(buffer, c.getName()); // Writing column name
+					writeMetaData(buffer, c.getDataType()); // Writing column data type
+
+					// Serialize Constraint object
+					try (ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+							ObjectOutputStream objectOutputStream = new ObjectOutputStream(byteArrayOutputStream)) {
+
+						objectOutputStream.writeObject(c.getConstraint());
+						objectOutputStream.flush();
+
+						// Convert the byte array to ByteBuffer
+						byte[] constraintBytes = byteArrayOutputStream.toByteArray();
+						ByteBuffer constraintBuffer = ByteBuffer.wrap(constraintBytes);
+
+						// Write serialized constraint data
+						if (buffer.remaining() < constraintBuffer.remaining()) {
+							buffer.flip();
+							channel.write(buffer);
+							buffer.clear();
+						}
+						buffer.putInt(constraintBytes.length);
+						buffer.put(constraintBuffer);
+
+					} catch (IOException e) {
+//	 	                System.out.println("Error serializing constraint: " + e.getMessage());
+					}
+				}
+
+				buffer.flip();
+				while (buffer.hasRemaining()) {
+					channel.write(buffer);
+				}
+				buffer.clear();
+				return true;
+
+			} catch (IOException e) {
+//	 	        System.out.println("Error writing metadata: " + e.getMessage());
+				return false;
+			}
+		}
+		return false;
+	}
+	
+	public boolean dropTable(String databaseName, String tableName) {
+		Database database = user.databases.get(databaseName);
+		if (database == null) {
+//			System.out.println("Database does not exist: " + databaseName);
+			return false;
+		}
+
+		if (database.getTables().contains(tableName)) {
+//			System.out.println("Table already exists: " + tableName);
+			return false;
+		}
+
+		
+		return false;
+	}
+	
+	
+}
+
+
