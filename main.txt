@@ -500,3 +500,196 @@ public class DatabaseOperation {
 }
 
 
+
+
+//update database operation
+
+package Controller;
+
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.ObjectOutputStream;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.util.List;
+
+import Model.*;
+
+public class DatabaseOperation {
+
+	User user;
+
+	DatabaseOperation(User user) {
+		this.user = user;
+	}
+
+	boolean createDatabase(Database db) {
+
+		String path = "/home/sabari-zstk369/Damaal/" + user.getUserId() + "/" + db.getDabaseName();
+
+		File folder = new File(path);
+
+		if (folder.exists()) {
+			System.out.println("Hello");
+			return false;
+		} else {
+			if (folder.mkdirs()) {
+				System.out.println("HII");
+				user.databases.put(db.getDabaseName(), db);
+				return true;
+			}
+		}
+		return false;
+	}
+
+	static boolean deleteFolder(String folderPath) throws IOException {
+		Path folder = Paths.get(folderPath);
+		if (Files.exists(folder)) {
+			Files.walk(folder).sorted((a, b) -> b.compareTo(a)).forEach(path -> {
+				try {
+					Files.delete(path);
+				} catch (IOException e) {
+//                         throw new RuntimeException("Failed to delete: " + path, e);
+					////////////
+				}
+			});
+			return true;
+		}
+		return false;
+
+	}
+
+	boolean dropDatabase(String dbName) {
+		for (String db : user.getDatabases()) {
+			if (db.equals(dbName)) {
+				try {
+					deleteFolder("/home/sabari-zstk369/Damaal/" + dbName);
+				} catch (Exception e) {
+					return false;
+				}
+				user.getDatabases().remove(db);
+			}
+		}
+		return false;
+	}
+
+	private static void writeMetaData(ByteBuffer buffer, String value) {
+		byte[] stringBytes = value.getBytes(StandardCharsets.UTF_8);
+		buffer.putInt(stringBytes.length);
+		buffer.put(stringBytes);
+	}
+
+	public boolean createTable(String databaseName, String tableName, List<Column> columns) {
+		Database database = user.databases.get(databaseName);
+		System.out.println(database);
+		if (database == null) {
+//			System.out.println("Database does not exist: " + databaseName);
+			return false;
+		}
+
+		if (database.getTables().contains(tableName)) {
+//			System.out.println("Table already exists: " + tableName);
+			return false;
+		}
+
+		Table newTable = new Table(tableName, columns);
+
+		database.tables.put(tableName, newTable);
+
+		String tableFolderPath = user.getHomeDirectory() + "/" + database.getDabaseName() + "/" + tableName;
+
+		File tableFolder = new File(tableFolderPath);
+
+		if (!tableFolder.exists() && tableFolder.mkdir()) {
+			try (FileChannel channel = FileChannel.open(Paths.get(tableFolderPath + "/Metadata"),
+					StandardOpenOption.CREATE, StandardOpenOption.APPEND)) {
+
+				ByteBuffer buffer = ByteBuffer.allocate(1024);
+
+				for (Column c : columns) {
+					Path filePath = Paths.get(tableFolderPath+"/"+c.getName()); 
+			        try {
+			            Files.createFile(filePath);
+			        } catch (FileAlreadyExistsException e) {
+			            System.out.println("File already exists.");
+			        } catch (Exception e) {
+			            e.printStackTrace();
+			        }
+					
+					writeMetaData(buffer, c.getName()); // Writing column name
+					writeMetaData(buffer, c.getDataType()); // Writing column data type
+					if(c.getDataType().equals("String")) {
+						try {
+							Path metaFilePath = Paths.get(tableFolderPath+"/"+c.getName()+"_metadata"); 
+				            Files.createFile(metaFilePath);
+				        } catch (FileAlreadyExistsException e) {
+				            System.out.println("File already exists.");
+				        } catch (Exception e) {
+				            e.printStackTrace();
+				        }
+					}
+
+					// Serialize Constraint object
+					try (ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+							ObjectOutputStream objectOutputStream = new ObjectOutputStream(byteArrayOutputStream)) {
+
+						objectOutputStream.writeObject(c.getConstraint());
+						objectOutputStream.flush();
+
+						// Convert the byte array to ByteBuffer
+						byte[] constraintBytes = byteArrayOutputStream.toByteArray();
+						ByteBuffer constraintBuffer = ByteBuffer.wrap(constraintBytes);
+
+						// Write serialized constraint data
+						if (buffer.remaining() < constraintBuffer.remaining()) {
+							buffer.flip();
+							channel.write(buffer);
+							buffer.clear();
+						}
+						buffer.putInt(constraintBytes.length);
+						buffer.put(constraintBuffer);
+
+					} catch (IOException e) {
+//	 	                System.out.println("Error serializing constraint: " + e.getMessage());
+					}
+				}
+
+				buffer.flip();
+				while (buffer.hasRemaining()) {
+					channel.write(buffer);
+				}
+				buffer.clear();
+				return true;
+
+			} catch (IOException e) {
+//	 	        System.out.println("Error writing metadata: " + e.getMessage());
+				return false;
+			}
+		}
+		return false;
+	}
+	
+	public boolean dropTable(String databaseName, String tableName) {
+		Database database = user.databases.get(databaseName);
+		if (database == null) {
+//			System.out.println("Database does not exist: " + databaseName);
+			return false;
+		}
+
+		if (database.getTables().contains(tableName)) {
+//			System.out.println("Table already exists: " + tableName);
+			return false;
+		}
+
+		
+		return false;
+	}
+	
+	
+}
+
+
+
