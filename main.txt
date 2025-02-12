@@ -689,7 +689,310 @@ public class DatabaseOperation {
 	}
 	
 	
+	
 }
+
+public class ColumnDAO {
+
+    private static  int initialCapacity =1024;
+    private  static final int boolean_BYTES=1;
+     public static void insertValue(String fileName,String MetaFileName, String datatype, String constraint, Object value)
+    {
+    	
+    	 if(!checkColumnDatatype(MetaFileName,fileName,datatype))
+    	 {
+    		 System.out.println("incorrect datatype");
+    	 }
+    	 
+        ByteBuffer buffer = ByteBuffer.allocate(initialCapacity);
+        
+        ByteBuffer valueBuffer = prepareValueBuffer(fileName, value);
+        
+        if (buffer.remaining() < valueBuffer.remaining()) {
+        	System.out.println("buffer remaining " +buffer.remaining());
+        	System.out.println("value Buffer remaining "+valueBuffer.remaining());
+        	
+            buffer = resizeBuffer(buffer, buffer.capacity() * 2);
+        }
+        buffer.put(valueBuffer);
+        FileCreation(fileName, buffer);
+    }
+
+     
+    private static ByteBuffer prepareValueBuffer(String fileName, Object value) {
+
+        ByteBuffer valueBuffer=ByteBuffer.allocate(initialCapacity);
+    	if (value instanceof String) {
+         	
+        	System.out.println("String value consider");
+        	
+        	StringDescription(fileName,(String)value);
+           byte[] stringBytes = ((String) value).getBytes(StandardCharsets.UTF_8);
+            valueBuffer = ByteBuffer.allocate(stringBytes.length);         
+            valueBuffer.put(stringBytes);  
+            valueBuffer.flip();
+      	  return valueBuffer;     
+        }
+        long rowid=getRowId(fileName);
+        boolean isDeleted=false;
+        if (value instanceof Integer) {
+            valueBuffer = ByteBuffer.allocate(Long.BYTES+boolean_BYTES+Integer.BYTES);
+            valueBuffer.putLong(rowid+1);
+            valueBuffer.put((byte)(isDeleted?1:0));
+            valueBuffer.putInt((Integer)value);
+        } else if (value instanceof Long) {
+            valueBuffer = ByteBuffer.allocate(Long.BYTES+boolean_BYTES+Long.BYTES);
+            valueBuffer.putLong(rowid+1);
+            valueBuffer.put((byte)(isDeleted?1:0));
+            valueBuffer.putLong((Long) value);
+        } else if (value instanceof Float) {
+            valueBuffer = ByteBuffer.allocate(Long.BYTES+boolean_BYTES+Float.BYTES);
+            valueBuffer.putLong(rowid+1);
+            valueBuffer.put((byte)(isDeleted?1:0));
+            valueBuffer.putFloat((Float) value);
+        } else if (value instanceof Double) {
+            valueBuffer = ByteBuffer.allocate(Long.BYTES+boolean_BYTES+Double.BYTES);
+            valueBuffer.putLong(rowid+1);
+            valueBuffer.put((byte)(isDeleted?1:0));
+            valueBuffer.putDouble((Double) value);
+        } else if (value instanceof Short) {
+            valueBuffer = ByteBuffer.allocate(Long.BYTES+boolean_BYTES+Short.BYTES);
+            valueBuffer.putLong(rowid+1);
+            valueBuffer.put((byte)(isDeleted?1:0));
+            valueBuffer.putShort((Short) value);
+        } else if (value instanceof Byte) {
+            valueBuffer = ByteBuffer.allocate(Long.BYTES+boolean_BYTES+Byte.BYTES);
+            valueBuffer.putLong(rowid+1);
+            valueBuffer.put((byte)(isDeleted?1:0));
+            valueBuffer.put((Byte) value);
+        }  else {
+            throw new IllegalArgumentException("Unsupported data type: " + value.getClass());
+        }
+
+        valueBuffer.flip();
+    	  return valueBuffer;   
+    }
+
+    
+    //check the datatype of the given column is correct or not
+    
+    public static boolean checkColumnDatatype(String metaDataFileName,String fileName ,String datatype)
+    {
+    	List<Column> columnsArray=readMetadata(metaDataFileName);
+    	for(Column column:columnsArray)
+    	{
+    		if((fileName.equals(column.getName())) && (datatype.equals(column.getDataType())))
+    		{
+    		   return true;	
+    		}
+    	}
+    	
+    	return false;
+    	
+    	
+    }
+    
+    
+    // string file with full information
+    public static void  StringDescription(String fileName,String data)
+    {
+    	ByteBuffer buffer=ByteBuffer.allocate(initialCapacity);
+      	try(FileChannel channel=FileChannel.open(Path.of(fileName +"description"), StandardOpenOption.CREATE,StandardOpenOption.APPEND))
+      	{
+
+      		System.out.println("check1");
+         long[] rowAndOffset=RowIAndOffset(fileName +"description");
+          long rowId=rowAndOffset[0];
+          long offset=rowAndOffset[1];  
+          long length=rowAndOffset[2];
+          
+          System.out.println("OutOffset  "+offset);
+//          System.out.println("rowid "+rowId);
+          
+          boolean isDeleted=false;
+       
+
+    	    buffer.flip();
+    	    buffer=buffer.allocate(Long.BYTES+boolean_BYTES+Integer.BYTES+Long.BYTES);
+    	    buffer.putLong(rowId+1);
+    	    buffer.put((byte)(isDeleted?1:0));  
+    	    buffer.putLong(offset+length);
+    	    int dataLength=data.length();
+    	    buffer.putInt(dataLength);
+    	    buffer.flip();
+
+            // Write the buffer content to the file
+            channel.write(buffer);
+            buffer.clear();  // C
+      	}
+    	  	catch(IOException e)
+    		{
+    	  		
+    			System.out.println("Print stack error");
+    	        e.printStackTrace();   
+    	      }
+    	  	
+
+    }
+    
+    // writing for row and offset value
+    
+    public static long[] RowIAndOffset(String fileName)
+    {
+    	long rowid=0;
+    	long offset=0;
+    	int length=0;
+    	ByteBuffer buffer=ByteBuffer.allocate(initialCapacity);
+    	long[] rowAndOffset=new long[3];
+
+    	System.out.println("fileName " +fileName);
+  
+    	try(FileChannel channel=FileChannel.open(Path.of(fileName),StandardOpenOption.READ))
+    	{
+//    		System.out.println("hello");
+    		while(channel.read(buffer)>0)
+    		{
+    			buffer.flip();
+    			while(buffer.remaining()>=21)
+    			{
+    				rowid=buffer.getLong();
+    				boolean isDeleted=buffer.get()!=0;
+    				offset=buffer.getLong();
+    			   length=buffer.getInt();
+    			
+    				System.out.println("row" +rowid);  
+    			    System.out.println("isDeleted "+isDeleted);
+    				System.out.println("offset "+offset);
+    				System.out.println("length "+length);
+    				
+    				rowAndOffset[0]=rowid;
+    				rowAndOffset[1]=offset;		
+    				rowAndOffset[2]=length;
+    			}
+    		}
+    		
+    	}
+    	catch(IOException e)
+    	{
+     		System.out.println("check2");
+    		System.out.println(e.getMessage());
+    	}
+    	rowAndOffset[0]=rowid;
+    	rowAndOffset[1]=offset;
+    	return rowAndOffset;
+       
+
+    }
+
+    public static void ValueWithInteger(String fileName, String value)
+    {
+        ByteBuffer buffer = ByteBuffer.allocate(Integer.BYTES);
+        try(FileChannel channel = FileChannel.open(Path.of(fileName + "withLength"), StandardOpenOption.CREATE, StandardOpenOption.APPEND)) {
+            buffer.putInt(value.length());
+            buffer.flip();
+            channel.write(buffer);
+            buffer.clear();
+        } catch (IOException e) {
+            e.printStackTrace();        }
+    }
+
+    private static ByteBuffer resizeBuffer(ByteBuffer buffer, int newSize) {
+        ByteBuffer newBuffer = ByteBuffer.allocate(newSize);
+        buffer.flip();
+        newBuffer.put(buffer);
+        return newBuffer;
+    }
+
+    public static void FileCreation(String filename, ByteBuffer buffer) {
+        try (FileChannel channel = FileChannel.open(Path.of(filename), StandardOpenOption.APPEND)) {
+            buffer.flip();
+            channel.write(buffer);
+            buffer.clear();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+    
+
+    public static long  getRowId(String fileName) {
+    	long rowid=0;
+    	 try (FileChannel channel = FileChannel.open(Path.of(fileName), StandardOpenOption.READ)) {
+             ByteBuffer buffer = ByteBuffer.allocate(1024); 
+
+             while (channel.read(buffer) > 0) { 
+                 buffer.flip();  
+
+                 while (buffer.remaining() >= 13) {  
+                     rowid = buffer.getLong(); 
+                     boolean booleanValue = buffer.get() != 0;  
+                     int value = buffer.getInt();  
+                      System.out.println("Row ID: " + rowid);
+                     System.out.println("Deleted: " + booleanValue);
+                     System.out.println("Value: " + value);
+                 }
+                 buffer.clear();  
+
+         } }catch (IOException e) {
+             e.printStackTrace(); 
+         }
+
+        return rowid;
+    }
+    public static List<Column> readMetadata(String filePath) {
+        List<Column> columns = new ArrayList<>();
+        try (FileChannel channel = FileChannel.open(Paths.get(filePath), StandardOpenOption.READ)) {
+            ByteBuffer buffer = ByteBuffer.allocate(1024);
+            channel.read(buffer);
+            buffer.flip();
+
+
+            while (buffer.hasRemaining()) {
+                // Read column name
+                String columnName = readString(buffer);
+
+                // Read data type
+                String dataType = readString(buffer);
+
+                // Read constraint object
+                Object constraint = readObject(buffer);
+
+                // Reconstruct Column object
+                Column column = new Column(columnName, dataType,false, (Constraint)constraint);
+                columns.add(column);
+            }
+
+            // Print Columns
+            for (Column column : columns) {
+                System.out.println("Column: " + column.getName() + ", Type: " + column.getDataType() +
+                        ", Constraint: " + column.getConstraint());
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return columns;
+    }
+
+    private static String readString(ByteBuffer buffer) {
+        int length = buffer.getInt(); // Read string length
+        byte[] bytes = new byte[length];
+        buffer.get(bytes); // Read actual string data
+        return new String(bytes);
+    }
+
+    private static Object readObject(ByteBuffer buffer) {
+        int length = buffer.getInt(); // Read object size
+        byte[] bytes = new byte[length];
+        buffer.get(bytes); // Read object data
+
+        try (ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(bytes))) {
+            return ois.readObject(); 
+        } catch (IOException | ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+    
 
 
 
