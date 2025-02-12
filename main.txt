@@ -1,3 +1,653 @@
+package Controller;
+
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectOutputStream;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.util.List;
+
+import Model.*;
+
+public class DatabaseOperation {
+
+	User user;
+
+	DatabaseOperation(User user) {
+		this.user = user;
+	}
+
+	boolean createDatabase(Database db) {
+
+		String path = user.getHomeDirectory() + "/" + db.getDabaseName();
+
+		File folder = new File(path);
+
+		if (folder.exists()) {
+			return false;
+		} else {
+			if (folder.mkdir()) {
+				user.databases.put(db.getDabaseName(), db);
+				return true;
+			}
+		}
+		return false;
+	}
+
+	static boolean deleteFolder(String folderPath) throws IOException {
+		Path folder = Paths.get(folderPath);
+		if (Files.exists(folder)) {
+			System.out.println("hii");
+			Files.walk(folder).sorted((a, b) -> b.compareTo(a)).forEach(path -> {
+				try {
+					Files.delete(path);
+				} catch (IOException e) {
+//                         throw new RuntimeException("Failed to delete: " + path, e);
+					////////////
+				}
+			});
+			return true;
+		}
+
+		return false;
+
+	}
+
+	boolean dropDatabase(String dbName) {
+		for (String db : user.getDatabases()) {
+			if (db.equals(dbName)) {
+				try {
+					if (deleteFolder(user.getHomeDirectory() + "/" + dbName)) {
+						user.getDatabases().remove(db);
+						return true;
+					}
+					return false;
+				} catch (Exception e) {
+					return false;
+				}
+			}
+		}
+		return false;
+	}
+
+	private static void writeMetaData(ByteBuffer buffer, String value) {
+		byte[] stringBytes = value.getBytes(StandardCharsets.UTF_8);
+		buffer.putInt(stringBytes.length);
+		buffer.put(stringBytes);
+	}
+
+	public boolean createTable(String databaseName, String tableName, List<Column> columns) {
+		Database database = user.databases.get(databaseName);
+		if (database == null) {
+//			System.out.println("Database does not exist: " + databaseName);
+			return false;
+		}
+
+		if (database.getTables().contains(tableName)) {
+//			System.out.println("Table already exists: " + tableName);
+			return false;
+		}
+
+		Table newTable = new Table(tableName, columns);
+
+		database.tables.put(tableName, newTable);
+
+		String tableFolderPath = user.getHomeDirectory() + "/" + database.getDabaseName() + "/" + tableName;
+
+		File tableFolder = new File(tableFolderPath);
+
+		if (!tableFolder.exists() && tableFolder.mkdir()) {
+			try (FileChannel channel = FileChannel.open(Paths.get(tableFolderPath + "/Metadata"),
+					StandardOpenOption.CREATE, StandardOpenOption.APPEND)) {
+
+				ByteBuffer buffer = ByteBuffer.allocate(1024);
+
+				for (Column c : columns) {
+					String filePath = (tableFolderPath + "/" + c.getName());
+
+					 try (FileOutputStream fileOut = new FileOutputStream(filePath);
+				                ObjectOutputStream objectOut = new ObjectOutputStream(fileOut)) {
+
+				           } catch (IOException e) {
+				               e.printStackTrace();
+				           }
+
+					writeMetaData(buffer, c.getName()); // Writing column name
+					writeMetaData(buffer, c.getDataType()); // Writing column data type
+					if (c.getDataType().equals("String")) {
+						
+						 try (FileOutputStream fileOut = new FileOutputStream(tableFolderPath + "/" + c.getName() + "_metadata");
+					                ObjectOutputStream objectOut = new ObjectOutputStream(fileOut)) {
+					               
+
+					           } catch (IOException e) {
+					               e.printStackTrace();
+					           }
+					}
+
+					// Serialize Constraint object
+					try (ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+							ObjectOutputStream objectOutputStream = new ObjectOutputStream(byteArrayOutputStream)) {
+
+						objectOutputStream.writeObject(c.getConstraint());
+						objectOutputStream.flush();
+
+						// Convert the byte array to ByteBuffer
+						byte[] constraintBytes = byteArrayOutputStream.toByteArray();
+						ByteBuffer constraintBuffer = ByteBuffer.wrap(constraintBytes);
+
+						// Write serialized constraint data
+						if (buffer.remaining() < constraintBuffer.remaining()) {
+							buffer.flip();
+							channel.write(buffer);
+							buffer.clear();
+						}
+						buffer.putInt(constraintBytes.length);
+						buffer.put(constraintBuffer);
+
+					} catch (IOException e) {
+//	 	                System.out.println("Error serializing constraint: " + e.getMessage());
+					}
+				}
+
+				buffer.flip();
+				while (buffer.hasRemaining()) {
+					channel.write(buffer);
+				}
+				buffer.clear();
+				return true;
+
+			} catch (IOException e) {
+//	 	        System.out.println("Error writing metadata: " + e.getMessage());
+				return false;
+			}
+		}
+		return false;
+	}
+
+	public boolean dropTable(String dbName, String tableName) {
+		for (String db : user.getDatabases()) {
+			if (db.equals(dbName)) {
+				if (user.databases.get(db).getTables().contains(tableName)) {
+					try {
+						if (deleteFolder(user.getHomeDirectory() + "/" + dbName + "/" + tableName)) {
+							user.databases.remove(db);
+							return true;
+						}
+						return false;
+					} catch (Exception e) {
+						// TODO: handle exception
+					}
+				}
+			}
+		}
+		return false;
+
+	}
+}
+
+
+
+
+
+
+
+package Controller;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
+import org.json.simple.parser.ParseException;
+
+@WebServlet("/LoginServlet")
+public class LoginServlet extends HttpServlet {
+    private static final long serialVersionUID = 1L;
+
+    protected void doPost(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
+        StringBuilder sb = new StringBuilder();
+        BufferedReader reader = request.getReader();
+        String line;
+        while ((line = reader.readLine()) != null) {
+            sb.append(line);
+        }
+
+        try {
+            // Corrected JSON parsing
+            JSONParser parser = new JSONParser();
+            JSONObject jsonData = (JSONObject) parser.parse(sb.toString()); 
+
+            // Extract email and password
+            String email = (String) jsonData.get("email");
+            String password = (String) jsonData.get("password");
+
+            // Dummy validation (Replace with actual DB check)
+            boolean isValid = "test@example.com".equals(email) && "password123".equals(password);
+
+            // Create response JSON
+            JSONObject jsonResponse = new JSONObject();
+            jsonResponse.put("success", isValid);
+            jsonResponse.put("message", isValid ? "Login successful!" : "Invalid email or password");
+
+            // Send response
+            response.setContentType("application/json");
+            response.getWriter().write(jsonResponse.toJSONString());
+
+        } catch (ParseException e) {
+            e.printStackTrace();
+            response.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON format");
+        }
+    }
+}
+
+
+
+
+
+
+
+package Controller;
+
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.List;
+
+import Model.*;
+
+public class Main {
+	
+	public static void main(String[] args) {
+		String dateString = "2025-02-11";  // Adjust this to match your format
+        
+        // Define the format of the date string
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");  // Match this pattern with your string format
+        Date date=null;
+        try {
+            // Parse the string into a Date object
+            date = dateFormat.parse(dateString);
+
+        } catch (ParseException e) {
+            System.out.println("Error parsing the date: " + e.getMessage());
+        }
+		
+		User user=new User("Sabari", "sabari","sabari@gamil.com", date);
+		
+		
+		DatabaseOperation db=new DatabaseOperation(user);
+		Database dbDatabase=new Database("Sabari1234");
+		
+		System.out.println(db.createDatabase(dbDatabase));
+		
+		
+		List<Column> list=Arrays.asList(new Column("id", "Integer", false, null),new Column("Name", "String", false, new Constraint("Try", "Unique", null, null)));
+		
+		System.out.println(db.createTable("Sabari1234", "Employee",list));
+//		
+		TableDAO table=new TableDAO(user,dbDatabase,"Employee");
+		
+		System.out.println(table.insertValue("id",1));
+		System.out.println(table.insertValue("Name",1));
+		System.out.println(table.insertValue("Name","Sabari"));
+	}
+	
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+package Controller;
+
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.List;
+
+import Model.*;
+
+public class TableDAO {
+	
+	private static int initialCapacity = 1024;
+	private static final int boolean_BYTES = 1;
+	User user;
+	Database db;
+	String tableName;
+	String directory;
+
+	public TableDAO(User user, Database db, String tableName) {
+		this.user = user;
+		this.db = db;
+		this.tableName = tableName;
+		this.directory=user.getHomeDirectory() + "/" + db.getDabaseName() + "/" + tableName + "/";
+	}
+
+	public boolean insertValue(String fileName,Object value) {
+
+		if (!checkColumnDatatype(fileName,value)) {
+			return false;
+		}
+
+		ByteBuffer buffer = ByteBuffer.allocate(initialCapacity);
+
+		ByteBuffer valueBuffer = prepareValueBuffer( fileName, value);
+
+		if (buffer.remaining() < valueBuffer.remaining()) {
+//        	
+			buffer = resizeBuffer(buffer, buffer.capacity() * 2);
+		}
+		buffer.put(valueBuffer);
+		loadData(fileName, buffer);
+		return true;
+	}
+
+	private ByteBuffer prepareValueBuffer( String fileName,
+			Object value) {
+
+		ByteBuffer valueBuffer = ByteBuffer.allocate(initialCapacity);
+		if (value instanceof String) {
+			StringDescription( fileName, (String) value);
+			byte[] stringBytes = ((String) value).getBytes(StandardCharsets.UTF_8);
+			valueBuffer = ByteBuffer.allocate(stringBytes.length);
+			valueBuffer.put(stringBytes);
+			valueBuffer.flip();
+			return valueBuffer;
+		}
+		long rowid = getRowId(fileName);
+		boolean isDeleted = false;
+		if (value instanceof Integer) {
+			valueBuffer = ByteBuffer.allocate(Long.BYTES + boolean_BYTES + Integer.BYTES);
+			valueBuffer.putLong(rowid + 1);
+			valueBuffer.put((byte) (isDeleted ? 1 : 0));
+			valueBuffer.putInt((Integer) value);
+		} else if (value instanceof Long) {
+			valueBuffer = ByteBuffer.allocate(Long.BYTES + boolean_BYTES + Long.BYTES);
+			valueBuffer.putLong(rowid + 1);
+			valueBuffer.put((byte) (isDeleted ? 1 : 0));
+			valueBuffer.putLong((Long) value);
+		} else if (value instanceof Float) {
+			valueBuffer = ByteBuffer.allocate(Long.BYTES + boolean_BYTES + Float.BYTES);
+			valueBuffer.putLong(rowid + 1);
+			valueBuffer.put((byte) (isDeleted ? 1 : 0));
+			valueBuffer.putFloat((Float) value);
+		} else if (value instanceof Double) {
+			valueBuffer = ByteBuffer.allocate(Long.BYTES + boolean_BYTES + Double.BYTES);
+			valueBuffer.putLong(rowid + 1);
+			valueBuffer.put((byte) (isDeleted ? 1 : 0));
+			valueBuffer.putDouble((Double) value);
+		} else if (value instanceof Short) {
+			valueBuffer = ByteBuffer.allocate(Long.BYTES + boolean_BYTES + Short.BYTES);
+			valueBuffer.putLong(rowid + 1);
+			valueBuffer.put((byte) (isDeleted ? 1 : 0));
+			valueBuffer.putShort((Short) value);
+		} else if (value instanceof Byte) {
+			valueBuffer = ByteBuffer.allocate(Long.BYTES + boolean_BYTES + Byte.BYTES);
+			valueBuffer.putLong(rowid + 1);
+			valueBuffer.put((byte) (isDeleted ? 1 : 0));
+			valueBuffer.put((Byte) value);
+		} else {
+			throw new IllegalArgumentException("Unsupported data type: " + value.getClass());
+		}
+
+		valueBuffer.flip();
+		return valueBuffer;
+	}
+
+	// check the datatype of the given column is correct or not
+
+	public boolean checkColumnDatatype(String fileName,Object value) {
+		
+		String datatype=null;
+		if(value instanceof String)
+		{
+			datatype="String";
+		}
+		else if(value instanceof Integer)
+		{
+			datatype="Integer";
+		}
+		else if(value instanceof Long)
+		{
+			datatype="Long";
+		}
+		else if(value instanceof Float)
+		{
+			datatype="Float";
+		}
+		else if(value instanceof Double)
+		{
+			datatype="Double";
+		}
+		else if(value instanceof Short)
+		{
+			datatype="Short";
+		}
+		else if(value instanceof Byte)
+		{
+			datatype="Byte";
+		}
+		else{
+				throw new IllegalArgumentException("Unsupported data type: " + value.getClass());
+	   }
+
+    	List<Column> columnsArray = readMetadata();
+    	for(Column column:columnsArray)
+    	{
+    		if((fileName.equals(column.getName())) && (datatype.equals(column.getDataType())))
+    		{
+    		   return true;	
+    		}
+    	}
+		return false;
+	}
+
+	// string file with full information
+	public boolean StringDescription( String column, String data) {
+
+		if (db.getTables().contains(tableName)) {
+
+			ByteBuffer buffer = ByteBuffer.allocate(initialCapacity);
+			try (FileChannel channel = FileChannel.open(Paths.get(directory+ column + "_metadata"),
+					StandardOpenOption.CREATE, StandardOpenOption.APPEND)) {
+
+				long[] rowAndOffset = RowIdAndOffset(column + "_metadata");
+				long rowId = rowAndOffset[0];
+				long offset = rowAndOffset[1];
+				long length = rowAndOffset[2];
+				boolean isDeleted = false;
+
+				buffer.flip();
+				buffer = buffer.allocate(Long.BYTES + boolean_BYTES + Integer.BYTES + Long.BYTES);
+				buffer.putLong(rowId + 1);
+				buffer.put((byte) (isDeleted ? 1 : 0));
+				buffer.putLong(offset + length);
+				int dataLength = data.length();
+				buffer.putInt(dataLength);
+				buffer.flip();
+
+				// Write the buffer content to the file
+				channel.write(buffer);
+				buffer.clear(); // C
+				return true;
+			} catch (IOException e) {
+				e.printStackTrace();
+				return false;
+			}
+		}
+		return false;
+
+	}
+
+	// writing for row and offset value
+
+	public long[] RowIdAndOffset(String fileName) {
+		long rowid = 0;
+		long offset = 0;
+		int length = 0;
+		ByteBuffer buffer = ByteBuffer.allocate(initialCapacity);
+		long[] rowAndOffset = new long[3];
+
+
+		try (FileChannel channel = FileChannel.open(Paths.get(directory+fileName), StandardOpenOption.READ)) {
+			while (channel.read(buffer) > 0) {
+				buffer.flip();
+				while (buffer.remaining() >= 21) {
+					rowid = buffer.getLong();
+					boolean isDeleted = buffer.get() != 0;
+					offset = buffer.getLong();
+					length = buffer.getInt();
+
+					rowAndOffset[0] = rowid;
+					rowAndOffset[1] = offset;
+					rowAndOffset[2] = length;
+				}
+			}
+
+		} catch (IOException e) {
+//			System.out.println("check2");
+//			System.out.println(e.getMessage());
+		}
+		rowAndOffset[0] = rowid;
+		rowAndOffset[1] = offset;
+		return rowAndOffset;
+
+	}
+
+	private ByteBuffer resizeBuffer(ByteBuffer buffer, int newSize) {
+		ByteBuffer newBuffer = ByteBuffer.allocate(newSize);
+		buffer.flip();
+		newBuffer.put(buffer);
+		return newBuffer;
+	}
+
+	public void loadData(String filename, ByteBuffer buffer) {
+		try (FileChannel channel = FileChannel.open(Paths.get( directory+ filename), StandardOpenOption.APPEND)) {
+			buffer.flip();
+			channel.write(buffer);
+			buffer.clear();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+
+	public long getRowId(String fileName) {
+		long rowid = 0;
+		try (FileChannel channel = FileChannel.open(
+				Paths.get(directory+ fileName), StandardOpenOption.READ)) {
+			ByteBuffer buffer = ByteBuffer.allocate(1024);
+
+			while (channel.read(buffer) > 0) {
+				buffer.flip();
+
+				while (buffer.remaining() >= 13) {
+					rowid = buffer.getLong();
+					boolean booleanValue = buffer.get() != 0;
+					int value = buffer.getInt();
+				}
+				buffer.clear();
+
+			}
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+
+		return rowid;
+	}
+
+	public List<Column> readMetadata() {
+		List<Column> columns = new ArrayList<>();
+		try (FileChannel channel = FileChannel.open(
+				Paths.get(directory + "Metadata"),
+				StandardOpenOption.READ)) {
+			ByteBuffer buffer = ByteBuffer.allocate(1024);
+			channel.read(buffer);
+			buffer.flip();
+
+			while (buffer.hasRemaining()) {
+				// Read column name
+				String columnName = readString(buffer);
+
+				// Read data type
+				String dataType = readString(buffer);
+
+				// Read constraint object
+				Object constraint = readObject(buffer);
+
+				// Reconstruct Column object
+				Column column = new Column(columnName, dataType, false, (Constraint) constraint);
+				columns.add(column);
+			}
+
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		return columns;
+	}
+
+	private String readString(ByteBuffer buffer) {
+		int length = buffer.getInt(); // Read string length
+		byte[] bytes = new byte[length];
+		buffer.get(bytes); // Read actual string data
+		return new String(bytes);
+	}
+
+	private Object readObject(ByteBuffer buffer) {
+		int length = buffer.getInt(); // Read object size
+		byte[] bytes = new byte[length];
+		buffer.get(bytes); // Read object data
+
+		try (ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(bytes))) {
+			return ois.readObject();
+		} catch (IOException | ClassNotFoundException e) {
+			e.printStackTrace();
+		}
+		return null;
+	}
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 package Model;
 
 public class Column {
@@ -50,6 +700,16 @@ public class Column {
 
 
 
+
+
+
+
+
+
+
+
+
+
 package Model;
 
 import java.io.Serializable;
@@ -58,15 +718,13 @@ import java.io.Serializable;
 public class Constraint implements Serializable {
     private String name;
     private String type; // e.g., PRIMARY KEY, FOREIGN KEY, UNIQUE, etc.
-    private String columnName;
     private String referenceTable;  // For FOREIGN KEY constraints
     private String referenceColumn; // For FOREIGN KEY constraints
 
     // Constructor
-    public Constraint(String name, String type, String columnName, String referenceTable, String referenceColumn) {
+    public Constraint(String name, String type, String referenceTable, String referenceColumn) {
         this.name = name;
         this.type = type;
-        this.columnName = columnName;
         this.referenceTable = referenceTable;
         this.referenceColumn = referenceColumn;
     }
@@ -88,13 +746,6 @@ public class Constraint implements Serializable {
         this.type = type;
     }
 
-    public String getColumnName() {
-        return columnName;
-    }
-
-    public void setColumnName(String columnName) {
-        this.columnName = columnName;
-    }
 
     public String getReferenceTable() {
         return referenceTable;
@@ -113,6 +764,18 @@ public class Constraint implements Serializable {
     }
 
 }
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 package Model;
@@ -144,6 +807,17 @@ public class Database {
 }
 
 
+
+
+
+
+
+
+
+
+
+
+
 package Model;
 
 import java.util.*;
@@ -167,6 +841,12 @@ public class Row {
         return data;
     }
 }
+
+
+
+
+
+
 
 
 
@@ -218,8 +898,26 @@ public class Table {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
 package Model;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -242,8 +940,41 @@ public class User {
 		this.email = email;
 		this.dateOfBirth = dateOfBirth;
 		this.sessionId = "";
-		this.HomeDirectory="/home/sabari-zstk369/Damaal/"+userId;
-		databases=new HashMap<String, Database>();
+		this.HomeDirectory = "/home/sabari-zstk369/Damaal/" + userId;
+		databases = new HashMap<String, Database>();
+		File folder = new File(HomeDirectory);
+		if (!folder.exists() && folder.mkdir()) {
+
+		}
+	}
+
+	public static User loadUser(String userId) {
+		String filePath = "/home/sabari-zstk369/Damaal/" + userId + "/userData.ser";
+		File file = new File(filePath);
+
+		if (!file.exists()) {
+			System.out.println("User not found!");
+			return null;
+		}
+
+		try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(file))) {
+			return (User) ois.readObject(); // Deserialize and return User object
+		} catch (IOException | ClassNotFoundException e) {
+			e.printStackTrace();
+		}
+
+		return null;
+	}
+
+	// **Method to Save User Data**
+	public void saveUser() {
+		String filePath = HomeDirectory + "/userData.ser";
+		try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(filePath))) {
+			oos.writeObject(this);
+//			System.out.println("User data saved successfully!");
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 	}
 
 	public String getUserId() {
@@ -255,13 +986,14 @@ public class User {
 	}
 
 	public ArrayList<String> getDatabases() {
-		ArrayList<String> databaseName=new ArrayList<>();
+		ArrayList<String> databaseName = new ArrayList<>();
+		System.out.println(databases.keySet());
 		for (String key : databases.keySet()) {
 			databaseName.add(key);
-        }
+		}
 		return databaseName;
 	}
-	
+
 	public String getUsername() {
 		return username;
 	}
@@ -293,7 +1025,6 @@ public class User {
 	public void setSessionId(String sessionId) {
 		this.sessionId = sessionId;
 	}
-	
 
 	public String getHomeDirectory() {
 		return HomeDirectory;
@@ -319,1004 +1050,559 @@ public class User {
 
 
 
-controller---------
 
-package Controller;
 
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.IOException;
-import java.io.ObjectOutputStream;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
-import java.util.List;
 
-import Model.*;
 
-public class DatabaseOperation {
 
-	User user;
 
-	DatabaseOperation(User user) {
-		this.user = user;
-	}
 
-	boolean createDatabase(Database db) {
 
-		String path = "/home/sabari-zstk369/Damaal/" + user.getUserId() + "/" + db.getDabaseName();
 
-		File folder = new File(path);
 
-		if (folder.exists()) {
-			System.out.println("Hello");
-			return false;
-		} else {
-			if (folder.mkdirs()) {
-				System.out.println("HII");
-				user.databases.put(db.getDabaseName(), db);
-				return true;
-			}
-		}
-		return false;
-	}
 
-	static boolean deleteFolder(String folderPath) throws IOException {
-		Path folder = Paths.get(folderPath);
-		if (Files.exists(folder)) {
-			Files.walk(folder).sorted((a, b) -> b.compareTo(a)).forEach(path -> {
-				try {
-					Files.delete(path);
-				} catch (IOException e) {
-//                         throw new RuntimeException("Failed to delete: " + path, e);
-					////////////
-				}
-			});
-			return true;
-		}
-		return false;
 
-	}
 
-	boolean dropDatabase(String dbName) {
-		for (String db : user.getDatabases()) {
-			if (db.equals(dbName)) {
-				try {
-					deleteFolder("/home/sabari-zstk369/Damaal/" + dbName);
-				} catch (Exception e) {
-					return false;
-				}
-				user.getDatabases().remove(db);
-			}
-		}
-		return false;
-	}
 
-	private static void writeMetaData(ByteBuffer buffer, String value) {
-		byte[] stringBytes = value.getBytes(StandardCharsets.UTF_8);
-		buffer.putInt(stringBytes.length);
-		buffer.put(stringBytes);
-	}
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
 
-	public boolean createTable(String databaseName, String tableName, List<Column> columns) {
-		Database database = user.databases.get(databaseName);
-		System.out.println(database);
-		if (database == null) {
-//			System.out.println("Database does not exist: " + databaseName);
-			return false;
-		}
+body {
+    min-height: 100vh;
+    background: linear-gradient(to right, #a7c1dba4, #00416A),
+        url('/api/placeholder/1920/1080') center/cover;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-attachment: fixed;
+}
 
-		if (database.getTables().contains(tableName)) {
-//			System.out.println("Table already exists: " + tableName);
-			return false;
-		}
+.login-container {
+    background: rgba(255, 255, 255, 0.95);
+    padding: 2.5rem;
+    border-radius: 15px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.9);
+    width: 90%;
+    max-width: 400px;
+    backdrop-filter: blur(10px);
+    animation: fadeIn 0.5s ease-out;
+}
 
-		Table newTable = new Table(tableName, columns);
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
 
-		database.tables.put(tableName, newTable);
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
 
-		String tableFolderPath = user.getHomeDirectory() + "/" + database.getDabaseName() + "/" + tableName;
+.login-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
 
-		File tableFolder = new File(tableFolderPath);
+.login-header h1 {
+    color: #2c3e50;
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+}
 
-		if (!tableFolder.exists() && tableFolder.mkdir()) {
-			try (FileChannel channel = FileChannel.open(Paths.get(tableFolderPath + "/Metadata"),
-					StandardOpenOption.CREATE, StandardOpenOption.APPEND)) {
+.login-header p {
+    color: #7f8c8d;
+    font-size: 0.9rem;
+}
 
-				ByteBuffer buffer = ByteBuffer.allocate(1024);
+.form-group {
+    margin-bottom: 1.5rem;
+    position: relative;
+}
 
-				for (Column c : columns) {
-					Path filePath = Paths.get(tableFolderPath+"/"+c.getName()); 
-			        try {
-			            Files.createFile(filePath);
-			            System.out.println("File created: " + filePath);
-			        } catch (FileAlreadyExistsException e) {
-			            System.out.println("File already exists.");
-			        } catch (Exception e) {
-			            e.printStackTrace();
-			        }
-					
-					writeMetaData(buffer, c.getName()); // Writing column name
-					writeMetaData(buffer, c.getDataType()); // Writing column data type
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: #34495e;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
 
-					// Serialize Constraint object
-					try (ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-							ObjectOutputStream objectOutputStream = new ObjectOutputStream(byteArrayOutputStream)) {
+.form-group input {
+    width: 100%;
+    padding: 0.8rem;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    background: #fff;
+}
 
-						objectOutputStream.writeObject(c.getConstraint());
-						objectOutputStream.flush();
+.form-group input:focus {
+    border-color: #3498db;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
 
-						// Convert the byte array to ByteBuffer
-						byte[] constraintBytes = byteArrayOutputStream.toByteArray();
-						ByteBuffer constraintBuffer = ByteBuffer.wrap(constraintBytes);
+.icon {
+    position: absolute;
+    right: 12px;
+    top: 38px;
+    color: #95a5a6;
+}
 
-						// Write serialized constraint data
-						if (buffer.remaining() < constraintBuffer.remaining()) {
-							buffer.flip();
-							channel.write(buffer);
-							buffer.clear();
-						}
-						buffer.putInt(constraintBytes.length);
-						buffer.put(constraintBuffer);
+.submit-btn {
+    width: 100%;
+    padding: 0.8rem;
+    background: linear-gradient(to left, #a7c1db, #187fbe);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
 
-					} catch (IOException e) {
-//	 	                System.out.println("Error serializing constraint: " + e.getMessage());
-					}
-				}
+.submit-btn:hover {
+    transition-duration: 1s;
+    transform: translateY(-2px) scale(1.05);
+    box-shadow: 0 4px 12px rgba(52, 152, 219, 0.2);
+}
 
-				buffer.flip();
-				while (buffer.hasRemaining()) {
-					channel.write(buffer);
-				}
-				buffer.clear();
-				return true;
+.submit-btn:active {
+    transform: translateY(0);
+}
 
-			} catch (IOException e) {
-//	 	        System.out.println("Error writing metadata: " + e.getMessage());
-				return false;
-			}
-		}
-		return false;
-	}
-	
-	public boolean dropTable(String databaseName, String tableName) {
-		Database database = user.databases.get(databaseName);
-		if (database == null) {
-//			System.out.println("Database does not exist: " + databaseName);
-			return false;
-		}
+.forgot-password {
+    text-align: center;
+    margin-top: 1rem;
+}
 
-		if (database.getTables().contains(tableName)) {
-//			System.out.println("Table already exists: " + tableName);
-			return false;
-		}
+.forgot-password a {
+    color: #3498db;
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: color 0.3s ease;
+}
 
-		
-		return false;
-	}
-	
-	
+.forgot-password a:hover {
+    color: #2980b9;
+    text-decoration: underline;
+}
+
+/* Additional decorative elements */
+.decor-circle {
+    position: fixed;
+    border-radius: 50%;
+    background: rgba(52, 152, 219, 0.1);
+    z-index: -1;
+}
+
+.decor-circle:nth-child(1) {
+    width: 300px;
+    height: 300px;
+    top: -150px;
+    left: -150px;
+}
+
+.decor-circle:nth-child(2) {
+    width: 200px;
+    height: 200px;
+    bottom: -100px;
+    right: -100px;
+}
+
+/* Error state */
+.form-group.error input {
+    border-color: #e74c3c;
+}
+
+.error-message {
+    color: #e74c3c;
+    font-size: 0.8rem;
+    margin-top: 0.3rem;
+    display: none;
+}
+
+.form-group.error .error-message {
+    display: block;
 }
 
 
 
 
-//update database operation
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Management System - Login</title>
+    <link rel="stylesheet" href="Login.css">
+</head>
+<body>
+    <!-- Decorative circles -->
+    <div class="decor-circle"></div>
+    <div class="decor-circle"></div>
 
-package Controller;
+    <div class="login-container">
+        <div class="login-header">
+            <h1>Welcome Back</h1>
+            <p>Log in to access your database management system</p>
+        </div>
 
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.IOException;
-import java.io.ObjectOutputStream;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
-import java.util.List;
+        <form id="loginForm" onsubmit="handleSubmit(event)">
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input 
+                    type="email" 
+                    id="email" 
+                    name="email" 
+                    placeholder="Enter your email"
+                    required
+                >
+                <span class="error-message">Please enter a valid email address</span>
+            </div>
 
-import Model.*;
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input 
+                    type="password" 
+                    id="password" 
+                    name="password" 
+                    placeholder="Enter your password"
+                    required
+                >
+                <span class="error-message">Password must be at least 6 characters</span>
+            </div>
 
-public class DatabaseOperation {
+            <button type="submit" class="submit-btn">Log In</button>
 
-	User user;
+            <div class="forgot-password">
+                <a href="#">Forgot your password?</a>
+            </div>
+        </form>
+    </div>
 
-	DatabaseOperation(User user) {
-		this.user = user;
-	}
+    <script>
+        function handleSubmit(event) {
+            event.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
 
-	boolean createDatabase(Database db) {
+            // Basic validation
+            let isValid = true;
+            
+            if (!isValidEmail(email)) {
+                document.querySelector('.form-group:nth-child(1)').classList.add('error');
+                isValid = false;
+            } else {
+                document.querySelector('.form-group:nth-child(1)').classList.remove('error');
+            }
 
-		String path = "/home/sabari-zstk369/Damaal/" + user.getUserId() + "/" + db.getDabaseName();
+            if (password.length < 6) {
+                document.querySelector('.form-group:nth-child(2)').classList.add('error');
+                isValid = false;
+            } else {
+                document.querySelector('.form-group:nth-child(2)').classList.remove('error');
+            }
 
-		File folder = new File(path);
+            if (isValid) {
+                console.log('Form submitted:', { email, password });
+            }
+        }
 
-		if (folder.exists()) {
-			System.out.println("Hello");
-			return false;
-		} else {
-			if (folder.mkdirs()) {
-				System.out.println("HII");
-				user.databases.put(db.getDabaseName(), db);
-				return true;
-			}
-		}
-		return false;
-	}
+        function isValidEmail(email) {
+            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+        }
+    </script>
+    
+    <script src="Login.js"></script>
+    
+</body>
+</html>
 
-	static boolean deleteFolder(String folderPath) throws IOException {
-		Path folder = Paths.get(folderPath);
-		if (Files.exists(folder)) {
-			Files.walk(folder).sorted((a, b) -> b.compareTo(a)).forEach(path -> {
-				try {
-					Files.delete(path);
-				} catch (IOException e) {
-//                         throw new RuntimeException("Failed to delete: " + path, e);
-					////////////
-				}
-			});
-			return true;
-		}
-		return false;
 
-	}
 
-	boolean dropDatabase(String dbName) {
-		for (String db : user.getDatabases()) {
-			if (db.equals(dbName)) {
-				try {
-					deleteFolder("/home/sabari-zstk369/Damaal/" + dbName);
-				} catch (Exception e) {
-					return false;
-				}
-				user.getDatabases().remove(db);
-			}
-		}
-		return false;
-	}
 
-	private static void writeMetaData(ByteBuffer buffer, String value) {
-		byte[] stringBytes = value.getBytes(StandardCharsets.UTF_8);
-		buffer.putInt(stringBytes.length);
-		buffer.put(stringBytes);
-	}
 
-	public boolean createTable(String databaseName, String tableName, List<Column> columns) {
-		Database database = user.databases.get(databaseName);
-		System.out.println(database);
-		if (database == null) {
-//			System.out.println("Database does not exist: " + databaseName);
-			return false;
-		}
 
-		if (database.getTables().contains(tableName)) {
-//			System.out.println("Table already exists: " + tableName);
-			return false;
-		}
 
-		Table newTable = new Table(tableName, columns);
 
-		database.tables.put(tableName, newTable);
 
-		String tableFolderPath = user.getHomeDirectory() + "/" + database.getDabaseName() + "/" + tableName;
 
-		File tableFolder = new File(tableFolderPath);
 
-		if (!tableFolder.exists() && tableFolder.mkdir()) {
-			try (FileChannel channel = FileChannel.open(Paths.get(tableFolderPath + "/Metadata"),
-					StandardOpenOption.CREATE, StandardOpenOption.APPEND)) {
 
-				ByteBuffer buffer = ByteBuffer.allocate(1024);
 
-				for (Column c : columns) {
-					Path filePath = Paths.get(tableFolderPath+"/"+c.getName()); 
-			        try {
-			            Files.createFile(filePath);
-			        } catch (FileAlreadyExistsException e) {
-			            System.out.println("File already exists.");
-			        } catch (Exception e) {
-			            e.printStackTrace();
-			        }
-					
-					writeMetaData(buffer, c.getName()); // Writing column name
-					writeMetaData(buffer, c.getDataType()); // Writing column data type
-					if(c.getDataType().equals("String")) {
-						try {
-							Path metaFilePath = Paths.get(tableFolderPath+"/"+c.getName()+"_metadata"); 
-				            Files.createFile(metaFilePath);
-				        } catch (FileAlreadyExistsException e) {
-				            System.out.println("File already exists.");
-				        } catch (Exception e) {
-				            e.printStackTrace();
-				        }
-					}
+body {
 
-					// Serialize Constraint object
-					try (ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-							ObjectOutputStream objectOutputStream = new ObjectOutputStream(byteArrayOutputStream)) {
-
-						objectOutputStream.writeObject(c.getConstraint());
-						objectOutputStream.flush();
-
-						// Convert the byte array to ByteBuffer
-						byte[] constraintBytes = byteArrayOutputStream.toByteArray();
-						ByteBuffer constraintBuffer = ByteBuffer.wrap(constraintBytes);
-
-						// Write serialized constraint data
-						if (buffer.remaining() < constraintBuffer.remaining()) {
-							buffer.flip();
-							channel.write(buffer);
-							buffer.clear();
-						}
-						buffer.putInt(constraintBytes.length);
-						buffer.put(constraintBuffer);
-
-					} catch (IOException e) {
-//	 	                System.out.println("Error serializing constraint: " + e.getMessage());
-					}
-				}
-
-				buffer.flip();
-				while (buffer.hasRemaining()) {
-					channel.write(buffer);
-				}
-				buffer.clear();
-				return true;
-
-			} catch (IOException e) {
-//	 	        System.out.println("Error writing metadata: " + e.getMessage());
-				return false;
-			}
-		}
-		return false;
-	}
-	
-	public boolean dropTable(String databaseName, String tableName) {
-		Database database = user.databases.get(databaseName);
-		if (database == null) {
-//			System.out.println("Database does not exist: " + databaseName);
-			return false;
-		}
-
-		if (database.getTables().contains(tableName)) {
-//			System.out.println("Table already exists: " + tableName);
-			return false;
-		}
-
-		
-		return false;
-	}
-	
-	
-	
+    background: linear-gradient(to right, #a7c1dba4, #00416A),
+        url('/api/placeholder/1920/1080') center/cover;
 }
 
-public class ColumnDAO {
-
-    private static  int initialCapacity =1024;
-    private  static final int boolean_BYTES=1;
-     public static void insertValue(String fileName,String MetaFileName, String datatype, String constraint, Object value)
-    {
-    	
-    	 if(!checkColumnDatatype(MetaFileName,fileName,datatype))
-    	 {
-    		 System.out.println("incorrect datatype");
-    	 }
-    	 
-        ByteBuffer buffer = ByteBuffer.allocate(initialCapacity);
-        
-        ByteBuffer valueBuffer = prepareValueBuffer(fileName, value);
-        
-        if (buffer.remaining() < valueBuffer.remaining()) {
-        	System.out.println("buffer remaining " +buffer.remaining());
-        	System.out.println("value Buffer remaining "+valueBuffer.remaining());
-        	
-            buffer = resizeBuffer(buffer, buffer.capacity() * 2);
-        }
-        buffer.put(valueBuffer);
-        FileCreation(fileName, buffer);
-    }
-
-     
-    private static ByteBuffer prepareValueBuffer(String fileName, Object value) {
-
-        ByteBuffer valueBuffer=ByteBuffer.allocate(initialCapacity);
-    	if (value instanceof String) {
-         	
-        	System.out.println("String value consider");
-        	
-        	StringDescription(fileName,(String)value);
-           byte[] stringBytes = ((String) value).getBytes(StandardCharsets.UTF_8);
-            valueBuffer = ByteBuffer.allocate(stringBytes.length);         
-            valueBuffer.put(stringBytes);  
-            valueBuffer.flip();
-      	  return valueBuffer;     
-        }
-        long rowid=getRowId(fileName);
-        boolean isDeleted=false;
-        if (value instanceof Integer) {
-            valueBuffer = ByteBuffer.allocate(Long.BYTES+boolean_BYTES+Integer.BYTES);
-            valueBuffer.putLong(rowid+1);
-            valueBuffer.put((byte)(isDeleted?1:0));
-            valueBuffer.putInt((Integer)value);
-        } else if (value instanceof Long) {
-            valueBuffer = ByteBuffer.allocate(Long.BYTES+boolean_BYTES+Long.BYTES);
-            valueBuffer.putLong(rowid+1);
-            valueBuffer.put((byte)(isDeleted?1:0));
-            valueBuffer.putLong((Long) value);
-        } else if (value instanceof Float) {
-            valueBuffer = ByteBuffer.allocate(Long.BYTES+boolean_BYTES+Float.BYTES);
-            valueBuffer.putLong(rowid+1);
-            valueBuffer.put((byte)(isDeleted?1:0));
-            valueBuffer.putFloat((Float) value);
-        } else if (value instanceof Double) {
-            valueBuffer = ByteBuffer.allocate(Long.BYTES+boolean_BYTES+Double.BYTES);
-            valueBuffer.putLong(rowid+1);
-            valueBuffer.put((byte)(isDeleted?1:0));
-            valueBuffer.putDouble((Double) value);
-        } else if (value instanceof Short) {
-            valueBuffer = ByteBuffer.allocate(Long.BYTES+boolean_BYTES+Short.BYTES);
-            valueBuffer.putLong(rowid+1);
-            valueBuffer.put((byte)(isDeleted?1:0));
-            valueBuffer.putShort((Short) value);
-        } else if (value instanceof Byte) {
-            valueBuffer = ByteBuffer.allocate(Long.BYTES+boolean_BYTES+Byte.BYTES);
-            valueBuffer.putLong(rowid+1);
-            valueBuffer.put((byte)(isDeleted?1:0));
-            valueBuffer.put((Byte) value);
-        }  else {
-            throw new IllegalArgumentException("Unsupported data type: " + value.getClass());
-        }
-
-        valueBuffer.flip();
-    	  return valueBuffer;   
-    }
-
-    
-    //check the datatype of the given column is correct or not
-    
-    public static boolean checkColumnDatatype(String metaDataFileName,String fileName ,String datatype)
-    {
-    	List<Column> columnsArray=readMetadata(metaDataFileName);
-    	for(Column column:columnsArray)
-    	{
-    		if((fileName.equals(column.getName())) && (datatype.equals(column.getDataType())))
-    		{
-    		   return true;	
-    		}
-    	}
-    	
-    	return false;
-    	
-    	
-    }
-    
-    
-    // string file with full information
-    public static void  StringDescription(String fileName,String data)
-    {
-    	ByteBuffer buffer=ByteBuffer.allocate(initialCapacity);
-      	try(FileChannel channel=FileChannel.open(Path.of(fileName +"description"), StandardOpenOption.CREATE,StandardOpenOption.APPEND))
-      	{
-
-      		System.out.println("check1");
-         long[] rowAndOffset=RowIAndOffset(fileName +"description");
-          long rowId=rowAndOffset[0];
-          long offset=rowAndOffset[1];  
-          long length=rowAndOffset[2];
-          
-          System.out.println("OutOffset  "+offset);
-//          System.out.println("rowid "+rowId);
-          
-          boolean isDeleted=false;
-       
-
-    	    buffer.flip();
-    	    buffer=buffer.allocate(Long.BYTES+boolean_BYTES+Integer.BYTES+Long.BYTES);
-    	    buffer.putLong(rowId+1);
-    	    buffer.put((byte)(isDeleted?1:0));  
-    	    buffer.putLong(offset+length);
-    	    int dataLength=data.length();
-    	    buffer.putInt(dataLength);
-    	    buffer.flip();
-
-            // Write the buffer content to the file
-            channel.write(buffer);
-            buffer.clear();  // C
-      	}
-    	  	catch(IOException e)
-    		{
-    	  		
-    			System.out.println("Print stack error");
-    	        e.printStackTrace();   
-    	      }
-    	  	
-
-    }
-    
-    // writing for row and offset value
-    
-    public static long[] RowIAndOffset(String fileName)
-    {
-    	long rowid=0;
-    	long offset=0;
-    	int length=0;
-    	ByteBuffer buffer=ByteBuffer.allocate(initialCapacity);
-    	long[] rowAndOffset=new long[3];
-
-    	System.out.println("fileName " +fileName);
-  
-    	try(FileChannel channel=FileChannel.open(Path.of(fileName),StandardOpenOption.READ))
-    	{
-//    		System.out.println("hello");
-    		while(channel.read(buffer)>0)
-    		{
-    			buffer.flip();
-    			while(buffer.remaining()>=21)
-    			{
-    				rowid=buffer.getLong();
-    				boolean isDeleted=buffer.get()!=0;
-    				offset=buffer.getLong();
-    			   length=buffer.getInt();
-    			
-    				System.out.println("row" +rowid);  
-    			    System.out.println("isDeleted "+isDeleted);
-    				System.out.println("offset "+offset);
-    				System.out.println("length "+length);
-    				
-    				rowAndOffset[0]=rowid;
-    				rowAndOffset[1]=offset;		
-    				rowAndOffset[2]=length;
-    			}
-    		}
-    		
-    	}
-    	catch(IOException e)
-    	{
-     		System.out.println("check2");
-    		System.out.println(e.getMessage());
-    	}
-    	rowAndOffset[0]=rowid;
-    	rowAndOffset[1]=offset;
-    	return rowAndOffset;
-       
-
-    }
-
-    public static void ValueWithInteger(String fileName, String value)
-    {
-        ByteBuffer buffer = ByteBuffer.allocate(Integer.BYTES);
-        try(FileChannel channel = FileChannel.open(Path.of(fileName + "withLength"), StandardOpenOption.CREATE, StandardOpenOption.APPEND)) {
-            buffer.putInt(value.length());
-            buffer.flip();
-            channel.write(buffer);
-            buffer.clear();
-        } catch (IOException e) {
-            e.printStackTrace();        }
-    }
-
-    private static ByteBuffer resizeBuffer(ByteBuffer buffer, int newSize) {
-        ByteBuffer newBuffer = ByteBuffer.allocate(newSize);
-        buffer.flip();
-        newBuffer.put(buffer);
-        return newBuffer;
-    }
-
-    public static void FileCreation(String filename, ByteBuffer buffer) {
-        try (FileChannel channel = FileChannel.open(Path.of(filename), StandardOpenOption.APPEND)) {
-            buffer.flip();
-            channel.write(buffer);
-            buffer.clear();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-    
-
-    public static long  getRowId(String fileName) {
-    	long rowid=0;
-    	 try (FileChannel channel = FileChannel.open(Path.of(fileName), StandardOpenOption.READ)) {
-             ByteBuffer buffer = ByteBuffer.allocate(1024); 
-
-             while (channel.read(buffer) > 0) { 
-                 buffer.flip();  
-
-                 while (buffer.remaining() >= 13) {  
-                     rowid = buffer.getLong(); 
-                     boolean booleanValue = buffer.get() != 0;  
-                     int value = buffer.getInt();  
-                      System.out.println("Row ID: " + rowid);
-                     System.out.println("Deleted: " + booleanValue);
-                     System.out.println("Value: " + value);
-                 }
-                 buffer.clear();  
-
-         } }catch (IOException e) {
-             e.printStackTrace(); 
-         }
-
-        return rowid;
-    }
-    public static List<Column> readMetadata(String filePath) {
-        List<Column> columns = new ArrayList<>();
-        try (FileChannel channel = FileChannel.open(Paths.get(filePath), StandardOpenOption.READ)) {
-            ByteBuffer buffer = ByteBuffer.allocate(1024);
-            channel.read(buffer);
-            buffer.flip();
-
-
-            while (buffer.hasRemaining()) {
-                // Read column name
-                String columnName = readString(buffer);
-
-                // Read data type
-                String dataType = readString(buffer);
-
-                // Read constraint object
-                Object constraint = readObject(buffer);
-
-                // Reconstruct Column object
-                Column column = new Column(columnName, dataType,false, (Constraint)constraint);
-                columns.add(column);
-            }
-
-            // Print Columns
-            for (Column column : columns) {
-                System.out.println("Column: " + column.getName() + ", Type: " + column.getDataType() +
-                        ", Constraint: " + column.getConstraint());
-            }
-
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return columns;
-    }
-
-    private static String readString(ByteBuffer buffer) {
-        int length = buffer.getInt(); // Read string length
-        byte[] bytes = new byte[length];
-        buffer.get(bytes); // Read actual string data
-        return new String(bytes);
-    }
-
-    private static Object readObject(ByteBuffer buffer) {
-        int length = buffer.getInt(); // Read object size
-        byte[] bytes = new byte[length];
-        buffer.get(bytes); // Read object data
-
-        try (ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(bytes))) {
-            return ois.readObject(); 
-        } catch (IOException | ClassNotFoundException e) {
-            e.printStackTrace();
-        }
-        return null;
-    }
-    
-package database;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
-import java.util.ArrayList;
-import java.util.List;
-
-public class ColumnDAO {
-
-    private static  int initialCapacity =1024;
-    private  static final int boolean_BYTES=1;
-     public static void insertValue(User user,Database db,String tableName,String fileName,String MetaFileName, String datatype, String constraint, Object value)
-    {
-    	System.out.println("MetaData "+MetaFileName);
-    	
-    	 if(!checkColumnDatatype(MetaFileName,fileName,datatype))
-    	 {
-    		 System.out.println("incorrect datatype");
-    		 return;
-    	 }
-    	 
-        ByteBuffer buffer = ByteBuffer.allocate(initialCapacity);
-        
-        ByteBuffer valueBuffer = prepareValueBuffer(user,db,tableName,fileName, value);
-        
-        if (buffer.remaining() < valueBuffer.remaining()) {
-//        	System.out.println("buffer remaining " +buffer.remaining());
-//        	System.out.println("value Buffer remaining "+valueBuffer.remaining());
-//        	
-            buffer = resizeBuffer(buffer, buffer.capacity() * 2);
-        }
-        buffer.put(valueBuffer);
-        FileCreation(user,db,tableName,fileName, buffer);
-    }
-
-     
-    private static ByteBuffer prepareValueBuffer(User user,Database db,String tableName,String fileName, Object value) {
-
-        ByteBuffer valueBuffer=ByteBuffer.allocate(initialCapacity);
-    	if (value instanceof String) {
-         	
-        	System.out.println("String value consider");
-        	
-        	StringDescription(user,db,tableName,fileName,(String)value);
-           byte[] stringBytes = ((String) value).getBytes(StandardCharsets.UTF_8);
-            valueBuffer = ByteBuffer.allocate(stringBytes.length);         
-            valueBuffer.put(stringBytes);  
-            valueBuffer.flip();
-      	  return valueBuffer;     
-        }
-        long rowid=getRowId(fileName);
-        boolean isDeleted=false;
-        if (value instanceof Integer) {
-            valueBuffer = ByteBuffer.allocate(Long.BYTES+boolean_BYTES+Integer.BYTES);
-            valueBuffer.putLong(rowid+1);
-            valueBuffer.put((byte)(isDeleted?1:0));
-            valueBuffer.putInt((Integer)value);
-        } else if (value instanceof Long) {
-            valueBuffer = ByteBuffer.allocate(Long.BYTES+boolean_BYTES+Long.BYTES);
-            valueBuffer.putLong(rowid+1);
-            valueBuffer.put((byte)(isDeleted?1:0));
-            valueBuffer.putLong((Long) value);
-        } else if (value instanceof Float) {
-            valueBuffer = ByteBuffer.allocate(Long.BYTES+boolean_BYTES+Float.BYTES);
-            valueBuffer.putLong(rowid+1);
-            valueBuffer.put((byte)(isDeleted?1:0));
-            valueBuffer.putFloat((Float) value);
-        } else if (value instanceof Double) {
-            valueBuffer = ByteBuffer.allocate(Long.BYTES+boolean_BYTES+Double.BYTES);
-            valueBuffer.putLong(rowid+1);
-            valueBuffer.put((byte)(isDeleted?1:0));
-            valueBuffer.putDouble((Double) value);
-        } else if (value instanceof Short) {
-            valueBuffer = ByteBuffer.allocate(Long.BYTES+boolean_BYTES+Short.BYTES);
-            valueBuffer.putLong(rowid+1);
-            valueBuffer.put((byte)(isDeleted?1:0));
-            valueBuffer.putShort((Short) value);
-        } else if (value instanceof Byte) {
-            valueBuffer = ByteBuffer.allocate(Long.BYTES+boolean_BYTES+Byte.BYTES);
-            valueBuffer.putLong(rowid+1);
-            valueBuffer.put((byte)(isDeleted?1:0));
-            valueBuffer.put((Byte) value);
-        }  else {
-            throw new IllegalArgumentException("Unsupported data type: " + value.getClass());
-        }
-
-        valueBuffer.flip();
-    	  return valueBuffer;   
-    }
-
-    
-    //check the datatype of the given column is correct or not
-    
-    public static boolean checkColumnDatatype(String metaDataFileName,String fileName ,String datatype)
-    {
-    	List<Column> columnsArray=readMetadata(metaDataFileName);
-    	for(Column column:columnsArray)
-    	{
-    	
-    		if((fileName.equals(column.getName())) && (datatype.equals(column.getDataType())))
-    		{
-    			System.out.println("readingMetaData");
-    		   return true;	
-    		}
-    	}
-    	
-    	return false;
-    	
-    	
-    }
-    
-    
-    // string file with full information
-    public static void  StringDescription(User user,Database db,String tableName,String fileName,String data)
-    {
-    	ByteBuffer buffer=ByteBuffer.allocate(initialCapacity);
-      	try(FileChannel channel=FileChannel.open(Path.of("/home/naga-zstk392/ZBase/" + user.getUserId() + "/" + db.getDabaseName()+"/" +tableName+"/"+fileName+"_metadata"), StandardOpenOption.CREATE,StandardOpenOption.APPEND))
-      	{
-
-      		System.out.println("check1");
-         long[] rowAndOffset=RowIAndOffset(fileName +"description");
-          long rowId=rowAndOffset[0];
-          long offset=rowAndOffset[1];  
-          long length=rowAndOffset[2];
-          
-          System.out.println("OutOffset  "+offset);
-//          System.out.println("rowid "+rowId);
-          
-          boolean isDeleted=false;
-       
-
-    	    buffer.flip();
-    	    buffer=buffer.allocate(Long.BYTES+boolean_BYTES+Integer.BYTES+Long.BYTES);
-    	    buffer.putLong(rowId+1);
-    	    buffer.put((byte)(isDeleted?1:0));  
-    	    buffer.putLong(offset+length);
-    	    int dataLength=data.length();
-    	    buffer.putInt(dataLength);
-    	    buffer.flip();
-
-            // Write the buffer content to the file
-            channel.write(buffer);
-            buffer.clear();  // C
-      	}
-    	  	catch(IOException e)
-    		{
-    	  		
-    			System.out.println("Print stack error");
-    	        e.printStackTrace();   
-    	      }
-    	  	
-
-    }
-    
-    // writing for row and offset value
-    
-    public static long[] RowIAndOffset(String fileName)
-    {
-    	long rowid=0;
-    	long offset=0;
-    	int length=0;
-    	ByteBuffer buffer=ByteBuffer.allocate(initialCapacity);
-    	long[] rowAndOffset=new long[3];
-
-    	System.out.println("fileName " +fileName);
-  
-    	try(FileChannel channel=FileChannel.open(Path.of(fileName),StandardOpenOption.READ))
-    	{
-//    		System.out.println("hello");
-    		while(channel.read(buffer)>0)
-    		{
-    			buffer.flip();
-    			while(buffer.remaining()>=21)
-    			{
-    				rowid=buffer.getLong();
-    				boolean isDeleted=buffer.get()!=0;
-    				offset=buffer.getLong();
-    			   length=buffer.getInt();
-    			
-    				System.out.println("row" +rowid);  
-    			    System.out.println("isDeleted "+isDeleted);
-    				System.out.println("offset "+offset);
-    				System.out.println("length "+length);
-    				
-    				rowAndOffset[0]=rowid;
-    				rowAndOffset[1]=offset;		
-    				rowAndOffset[2]=length;
-    			}
-    		}
-    		
-    	}
-    	catch(IOException e)
-    	{
-     		System.out.println("check2");
-    		System.out.println(e.getMessage());
-    	}
-    	rowAndOffset[0]=rowid;
-    	rowAndOffset[1]=offset;
-    	return rowAndOffset;
-       
-
-    }
-
-    public static void ValueWithInteger(String fileName, String value)
-    {
-        ByteBuffer buffer = ByteBuffer.allocate(Integer.BYTES);
-        try(FileChannel channel = FileChannel.open(Path.of(fileName + "withLength"), StandardOpenOption.CREATE, StandardOpenOption.APPEND)) {
-            buffer.putInt(value.length());
-            buffer.flip();
-            channel.write(buffer);
-            buffer.clear();
-        } catch (IOException e) {
-            e.printStackTrace();        }
-    }
-
-    private static ByteBuffer resizeBuffer(ByteBuffer buffer, int newSize) {
-        ByteBuffer newBuffer = ByteBuffer.allocate(newSize);
-        buffer.flip();
-        newBuffer.put(buffer);
-        return newBuffer;
-    }
-
-    public static void FileCreation(User user,Database db,String tableName,String filename, ByteBuffer buffer) {
-    	System.out.println("fileCreation");
-        try (FileChannel channel = FileChannel.open(Path.of("/home/naga-zstk392/ZBase/" + user.getUserId() + "/" + db.getDabaseName()+"/" +tableName+"/"+filename), StandardOpenOption.APPEND)) {
-            buffer.flip();
-            channel.write(buffer);
-            buffer.clear();
-        } catch (IOException e) {
-        	System.out.println("Check");
-            e.printStackTrace();
-        }
-    }
-    
-
-    public static long  getRowId(String fileName) {
-    	long rowid=0;
-    	 try (FileChannel channel = FileChannel.open(Path.of("/home/naga-zstk392/ZBase/null/ZSTTK/StudentDetails/"+fileName), StandardOpenOption.READ)) {
-             ByteBuffer buffer = ByteBuffer.allocate(1024); 
-
-             while (channel.read(buffer) > 0) { 
-                 buffer.flip();  
-
-                 while (buffer.remaining() >= 13) {  
-                     rowid = buffer.getLong(); 
-                     boolean booleanValue = buffer.get() != 0;  
-                     int value = buffer.getInt();  
-                      System.out.println("Row ID: " + rowid);
-                     System.out.println("Deleted: " + booleanValue);
-                     System.out.println("Value: " + value);
-                 }
-                 buffer.clear();  
-
-         } }catch (IOException e) {
-        	 System.out.println("Rowid Error");
-             e.printStackTrace(); 
-         }
-
-        return rowid;
-    }
-    public static List<Column> readMetadata(String filePath) {
-        List<Column> columns = new ArrayList<>();
-        try (FileChannel channel = FileChannel.open(Paths.get("/home/naga-zstk392/ZBase/null/ZSTTK/StudentDetails/"+"Metadata"), StandardOpenOption.READ)) {
-            ByteBuffer buffer = ByteBuffer.allocate(1024);
-            channel.read(buffer);
-            buffer.flip();
-
-
-            while (buffer.hasRemaining()) {
-                // Read column name
-                String columnName = readString(buffer);
-
-                // Read data type
-                String dataType = readString(buffer);
-
-                // Read constraint object
-                Object constraint = readObject(buffer);
-
-                // Reconstruct Column object
-                Column column = new Column(columnName, dataType,false, (Constraint)constraint);
-                columns.add(column);
-            }
-
-            // Print Columns
-            for (Column column : columns) {
-                System.out.println("Column: " + column.getName() + ", Type: " + column.getDataType() +
-                        ", Constraint: " + column.getConstraint());
-            }
-
-        } catch (IOException e) {
-        	System.out.println("hello");
-            e.printStackTrace();
-        }
-        return columns;
-    }
-
-    private static String readString(ByteBuffer buffer) {
-        int length = buffer.getInt(); // Read string length
-        byte[] bytes = new byte[length];
-        buffer.get(bytes); // Read actual string data
-        return new String(bytes);
-    }
-
-    private static Object readObject(ByteBuffer buffer) {
-        int length = buffer.getInt(); // Read object size
-        byte[] bytes = new byte[length];
-        buffer.get(bytes); // Read object data
-
-        try (ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(bytes))) {
-            return ois.readObject(); 
-        } catch (IOException | ClassNotFoundException e) {
-            e.printStackTrace();
-        }
-        return null;
-    }
-    
-
- 
+.box {
+    height: 98.5vh;
+    width: 99vw;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
+
+.form {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 10px;
+    max-width: 450px;
+    padding: 20px;
+    box-sizing: border-box;
+    position: relative;
+    color: #fff;
+    animation: fadeIn 0.5s ease-out;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 15px;
+    box-shadow: 0 8px 32px rgb(153, 193, 241);
+    backdrop-filter: blur(10px);
+    justify-content: center;
+}
+
+span {
+    /* font-co: gray; */
+}
+
+.title {
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -1px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    padding-left: 30px;
+    color: #187fbe;
+}
+
+.title::before {
+    width: 18px;
+    height: 18px;
+}
+
+.title::after {
+    width: 18px;
+    height: 18px;
+    animation: pulse 1s linear infinite;
+}
+
+.title::before,
+.title::after {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    border-radius: 50%;
+    left: 0px;
+    background-color: #187fbe;
+}
+
+.message,
+.signin {
+    font-size: 14.5px;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.signin {
+    text-align: center;
+}
+
+.signin a:hover {
+    text-decoration: underline royalblue;
+}
+
+.signin a {
+    color: #187fbe;
+}
+
+.flex {
+    display: flex;
+    width: 100%;
+    gap: 6px;
+}
+
+.form label {
+    position: relative;
+}
+
+.form label .input {
+    color: gray;
+    width: 94.6%;
+    padding: 20px 05px 05px 10px;
+    outline: 0;
+    border: 1px solid rgba(105, 105, 105, 0.397);
+    border-radius: 10px;
+}
+
+::placeholder {
+    color: gray;
+}
+
+.inputsmall {
+    color: gray;
+    width: 90%;
+    padding: 20px 05px 05px 10px;
+    outline: 0;
+    border: 1px solid rgba(105, 105, 105, 0.397);
+    border-radius: 10px;
+}
+
+.form label .input+span {
+    color: rgba(255, 255, 255, 0.5);
+    position: absolute;
+    left: 10px;
+    top: 0px;
+    font-size: 0.9em;
+    cursor: text;
+    transition: 0.3s ease;
+}
+
+.form label .inputsmall+span {
+    color: rgba(255, 255, 255, 0.5);
+    position: absolute;
+    left: 10px;
+    top: 0px;
+    font-size: 0.9em;
+    cursor: text;
+    transition: 0.3s ease;
+}
+
+.form label .input:placeholder-shown+span {
+    top: 12.5px;
+    font-size: 0.9em;
+}
+
+.form label .inputsmall:placeholder-shown+span {
+    top: 12.5px;
+    font-size: 0.9em;
+}
+
+.form label .input:focus+span,
+.form label .input:valid+span {
+    color: #187fbe;
+    top: 0px;
+    font-size: 0.7em;
+    font-weight: 600;
+}
+
+.form label .inputsmall:focus+span,
+.form label .inputsmall:valid+span {
+    color: #187fbe;
+    top: 0px;
+    font-size: 0.7em;
+    font-weight: 600;
+}
+
+
+.input {
+    font-size: medium;
+}
+
+.submit {
+    border: none;
+    outline: none;
+    padding: 10px;
+    border-radius: 10px;
+    color: #fff;
+    font-size: 16px;
+    transform: .3s ease;
+    background: linear-gradient(to right, #a7c1db, #187fbe);
+    transition-duration: 3.3s
+}
+
+.submit:hover {
+    background: linear-gradient(to left, #a7c1db, #187fbe);
+    transform: scale(1.05);
+    transform: 1s;
+}
+
+@keyframes pulse {
+    from {
+        transform: scale(0.9);
+        opacity: 1;
+    }
+
+    to {
+        transform: scale(1.8);
+        opacity: 0;
+    }
+}
+
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <link rel="stylesheet" href="signin.css" />
+  </head>
+  <body>
+    <div class="box">
+      <form class="form">
+        <p class="title">Sign In</p>
+        <p class="message" style="color: gray; font-size: larger">
+          Signup now and get full access to our app.
+        </p>
+        <div class="flex">
+          <label>
+            <input class="inputsmall" type="text" placeholder="" required="" />
+            <span style="color: #187fbe">Name</span>
+          </label>
+
+          <label>
+            <input class="inputsmall" type="text" placeholder="" required="" />
+            <span style="color: #187fbe">Usename</span>
+          </label>
+        </div>
+
+        <label>
+          <input class="input" type="email" placeholder="" required="" />
+          <span style="color: #187fbe">Email</span>
+        </label>
+
+        <label>
+          <input class="input" type="password" placeholder="" required="" />
+          <span style="color: #187fbe">Password</span>
+        </label>
+        <label>
+          <input class="input" type="password" placeholder="" required="" />
+          <span style="color: #187fbe">Confirm password</span>
+        </label>
+        <button class="submit">Submit</button>
+        <p class="signin" style="color: black">
+          Already have an acount ? <a href="login.html">Login</a>
+        </p>
+      </form>
+    </div>
+  </body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
