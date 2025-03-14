@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Modern Database Manager</title>
+<link
+	href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+	rel="stylesheet" />
+<link href="dashboard.css" rel="stylesheet" />
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+
+<body>
+
+
+	<!--  Warning for DB delete -->
+	 <div id="warningPopup">
+      <div class="popup-box">
+        <h3>Confirm Deletion</h3>
+        <p>
+          Are you sure you want to delete this Database? This action cannot be
+          undone.
+        </p>
+        <div class="popup-buttons">
+          <button class="popup-button yes" id="confirmYes">Yes</button>
+          <button class="popup-button no" id="confirmNo">No</button>
+        </div>
+      </div>
+    </div>
+
+
+	<!-- Notofication box -->
+	<div id="notificationBox" class="notification"></div>
+
+	<div class="toolbar">
+		<div class="logo">
+			<img alt="" src="ZBASE.png" width="10%"> ZBase
+		</div>
+		<div class="toolbar-buttons">
+			<button class="btn" onclick="showCreateDatabaseUI()">
+				<i class="fas fa-plus"></i>New Database
+			</button>
+			<button class="btn" id="newTable" onclick="showCreateTableUI()">
+				<i class="fas fa-table"></i>New Table
+			</button>
+			<button id="logoutBtn" class="btn" onclick="logout()">
+				<i class="fa-solid fa-right-from-bracket"></i> Log out
+			</button>
+		</div>
+	</div>
+
+	<div class="main-container">
+		<div class="explorer">
+			<h2>
+				<i class="fas fa-server"></i>Databases
+			</h2>
+			<div id="dbExplorer"></div>
+		</div>
+
+		<div class="container" id="c">
+			<!--  This is where every contents gets loaded-->
+
+			<nav class="navbar" id="operation">
+				<ul>
+					<li><a id="operationInsert" href="#" class="active">Insert</a></li>
+					<li><a id="operationUpdate" href="#">Update</a></li>
+					<li><a id="operationSelect" href="#">Select</a></li>
+					<li><a id="operationAlter" href="#">Alter</a></li>
+					<li><a id="operationDelete" href="#">Delete</a></li>
+
+					<div id="tbDeleteBtn" class="tooltip-container" onclick="deleteTable()">
+						<i class="fa-solid fa-trash-can" id="createTableInDb" ></i> <span class="tooltip-text">Drop
+							Table</span>
+					</div>
+
+
+
+				</ul>
+			</nav>
+
+			<div class="dbDeleteContainer">
+				<button class="deleteDB-btn" style="font-size: medium"
+					onclick="deleteDB()">Drop DB</button>
+			</div>
+			<div class="tableDeleteContainer"></div>
+
+			<div class="dynamic_operator_container" id="operatorSpace"></div>
+
+
+			
+
+			<!-- no db available -->
+			<div id="noDatabaseMessage" class="no-db-message">
+          <div class="no-db-container">
+            <div class="no-db-content">
+              <i class="fas fa-database"></i>
+              <p>No databases available</p>
+              <h5 style="margin-top: 5px">Create any database</h5>
+              <button class="plus-btn" onclick="showCreateDatabaseUI()">
+                +
+              </button>
+            </div>
+          </div>
+        </div>
+			<!-- /////////////////// -->
+
+
+			<div class="modal-overlay" id="modalOverlay">
+				<div class="modal">
+					<button class="close-btn" onclick="hideCreateDatabaseUI()">
+						<i class="fas fa-times"></i>
+					</button>
+					<div id="DBcreateTitleBox">
+						<h2>
+							<i class="fas fa-database"></i>Create Database...
+						</h2>
+					</div>
+					<div class="input-group">
+						<input type="text" id="dbName" placeholder=" " /> <label>Database
+							Name</label>
+					</div>
+					<button class="btn" id="createDb" onclick="createDatabase()">
+						<!-- <i class="fas fa-plus"></i>Create Database -->
+						Create
+					</button>
+					<div id="dbMessage" class="success-message"
+						style="display: block; border: 2px solid red"></div>
+				</div>
+			</div>
+
+			<!-- Entire create table box -->
+
+			<!-- <div class="section" id="tableSection">
+          <div id="tableCreationHeading">
+            <h2>
+              Create Table in <i class="fas fa-table"></i>
+              <span id="selectedDb"></span>
+            </h2>
+            <h2 id="cancelDBcreation" onclick="cancelTablecreation()">❌</h2>
+          </div>
+          <div class="input-group">
+            <input type="text" id="tableName" placeholder=" " />
+            <label>Table Name</label>
+          </div>
+
+          <div id="columnInputs" style="border: 1px solid green">
+            <div class="content" id="columnsArea">
+              <form id="tableForm">
+                <div class="form-group"></div>
+                <div class="column-header">
+                  <h2>Table Columns</h2>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <div class="sql-preview-header">
+            <div id="sqlPreview" class="sql-preview"></div>
+          </div>
+
+          <div style="text-align: right; margin-top: 30px">
+            <button type="button" id="addColumnBtn" class="btn btn-gold">
+              Add Column
+            </button>
+            <button type="button" class="btn btn-gold" onclick="createTable()">
+              Create Table
+            </button>
+          </div>
+
+          <div class="tableDisplay">DB</div>
+          <div id="tableMessage" class="success-message"></div>
+        </div> -->
+
+			<!-- Entire table data display -->
+			<div class="tableDisplay"></div>
+		</div>
+
+		<!-- Add new query interface section -->
+	</div>
+
+	<div class="notification" id="notification">
+		<i class="fas fa-check-circle"></i> <span id="notificationMessage"></span>
+	</div>
+
+
+	<script src="dashboard.js"></script>
+</body>
+</html>
