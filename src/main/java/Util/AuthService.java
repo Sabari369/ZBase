@@ -153,8 +153,6 @@ public class AuthService {
 	    } catch (ExpiredJwtException e) {
 	       System.err.println("Token expired, please log in again.");
 	       return "";
-	    } catch (SignatureException e) {
-	        throw new RuntimeException("Invalid token.");
 	    } catch (Exception e) {
 	        throw new RuntimeException("Malformed Token: " + e.getMessage());
 	    }

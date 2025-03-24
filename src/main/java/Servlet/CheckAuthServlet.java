@@ -35,7 +35,7 @@ public class CheckAuthServlet extends HttpServlet {
 		}
 
 		JSONObject jsonResponse = new JSONObject();
-		if (token != null && AuthService.getInstance().validateAndExtendToken(token) != null) {
+		if (token != null && AuthService.getInstance().validateAndExtendToken(token) != null && !AuthService.getInstance().validateAndExtendToken(token).isEmpty()) {
 			jsonResponse.put("authenticated", true);
 		} else {
 			jsonResponse.put("authenticated", false);

@@ -29,7 +29,7 @@ window.onload = async function() {
 			"http://localhost:8080/Database/CheckAuthServlet",
 			{
 				method: "GET",
-				credentials: "include", // 🔥 Sends cookies for authentication
+				credentials: "include",
 			}
 		);
 
